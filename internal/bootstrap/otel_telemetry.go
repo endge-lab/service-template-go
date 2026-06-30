@@ -36,8 +36,8 @@ func newTraceProvider(lc fx.Lifecycle, cfg *config.Config, telemetryResource *re
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if cfg.Telemetry.OTLPEndpoint == "" {
-		logger.Warn("trace exporter disabled: OTEL_EXPORTER_OTLP_ENDPOINT is empty")
+	if !cfg.Telemetry.Enabled || cfg.Telemetry.OTLPEndpoint == "" {
+		logger.Info("trace exporter disabled")
 		tp := sdktrace.NewTracerProvider(
 			sdktrace.WithResource(telemetryResource),
 			sdktrace.WithSampler(sdktrace.NeverSample()),
@@ -90,8 +90,8 @@ func newMeterProvider(lc fx.Lifecycle, cfg *config.Config, telemetryResource *re
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if cfg.Telemetry.OTLPEndpoint == "" {
-		logger.Warn("metric exporter disabled: OTEL_EXPORTER_OTLP_ENDPOINT is empty")
+	if !cfg.Telemetry.Enabled || cfg.Telemetry.OTLPEndpoint == "" {
+		logger.Info("metric exporter disabled")
 		mp := sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(telemetryResource),
 		)

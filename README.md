@@ -12,6 +12,7 @@
 - OpenAPI-файл в `docs/openapi.yaml`;
 - пример фичи `Todo`;
 - auth выключен по умолчанию;
+- telemetry выключена по умолчанию;
 - Redpanda/Kafka выключены по умолчанию.
 
 ## Как использовать
@@ -111,6 +112,23 @@ REDPANDA_ENABLED=false
 REDPANDA_ENABLED=true
 REDPANDA_BROKERS=redpanda:9092
 REDPANDA_CLIENT_ID=your-service
+```
+
+## Telemetry
+
+Telemetry опциональна. По умолчанию:
+
+```env
+TELEMETRY_ENABLED=false
+OTEL_EXPORTER_OTLP_ENDPOINT=
+```
+
+В этом режиме сервис не подключается к OTLP collector. Если нужен OpenTelemetry export:
+
+```env
+TELEMETRY_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+OTEL_EXPORTER_OTLP_INSECURE=true
 ```
 
 ## Logging

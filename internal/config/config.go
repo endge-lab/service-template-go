@@ -12,6 +12,7 @@ import (
 )
 
 type TelemetryConfig struct {
+	Enabled      bool   `envconfig:"TELEMETRY_ENABLED" default:"false"`
 	OTLPEndpoint string `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" default:""`
 	OTLPInsecure bool   `envconfig:"OTEL_EXPORTER_OTLP_INSECURE" default:"false"`
 }
@@ -171,7 +172,7 @@ func Load() *Config {
 		log.Fatal("не удалось загрузить конфигурацию: AUTH_ISSUER is required")
 	case cfg.Postgres.URI == "":
 		log.Fatal("не удалось загрузить конфигурацию: DATABASE_URI is required")
-	case cfg.Telemetry.OTLPEndpoint == "":
+	case cfg.Telemetry.Enabled && cfg.Telemetry.OTLPEndpoint == "":
 		log.Fatal("не удалось загрузить конфигурацию: OTEL_EXPORTER_OTLP_ENDPOINT is required")
 	case cfg.Redpanda.Enabled && len(cfg.Redpanda.BrokerList()) == 0:
 		log.Fatal("не удалось загрузить конфигурацию: REDPANDA_BROKERS is required when REDPANDA_ENABLED=true")
