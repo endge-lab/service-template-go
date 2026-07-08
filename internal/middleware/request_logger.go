@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	servicefiber "github.com/endge-lab/service-kit-go/httpkit/fiber"
+	servicefiber "github.com/endge-lab/service-kit-go/pkg/httpkit/fiber"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"

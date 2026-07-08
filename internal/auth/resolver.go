@@ -1,7 +1,7 @@
 package auth
 
 import (
-	serviceauth "github.com/endge-lab/service-kit-go/auth"
+	serviceauth "github.com/endge-lab/service-kit-go/pkg/auth"
 	"github.com/endge-lab/service-template-go/internal/config"
 
 	"go.opentelemetry.io/otel/trace"

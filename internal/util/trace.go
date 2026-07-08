@@ -3,8 +3,8 @@ package util
 import (
 	"context"
 
-	servicelogging "github.com/endge-lab/service-kit-go/logging"
-	servicetelemetry "github.com/endge-lab/service-kit-go/telemetry"
+	servicelogging "github.com/endge-lab/service-kit-go/pkg/logging"
+	servicetelemetry "github.com/endge-lab/service-kit-go/pkg/telemetry"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

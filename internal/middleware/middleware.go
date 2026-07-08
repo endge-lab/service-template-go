@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	kitfiberauth "github.com/endge-lab/service-kit-go/auth/fiber"
+	kitfiberauth "github.com/endge-lab/service-kit-go/pkg/auth/fiber"
 	"github.com/endge-lab/service-template-go/internal/auth"
 	domainerrors "github.com/endge-lab/service-template-go/internal/domain/errors"
 

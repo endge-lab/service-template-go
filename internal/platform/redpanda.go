@@ -1,7 +1,7 @@
 package platform
 
 import (
-	serviceredpanda "github.com/endge-lab/service-kit-go/redpanda"
+	serviceredpanda "github.com/endge-lab/service-kit-go/pkg/redpanda"
 	"github.com/endge-lab/service-template-go/internal/config"
 
 	"github.com/segmentio/kafka-go"
