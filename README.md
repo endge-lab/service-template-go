@@ -1,19 +1,22 @@
 # Endge Service Template Go
 
-`service-template-go` — пример Go-сервиса, который показывает, как подключать `github.com/endge-lab/service-kit-go` и строить backend с HTTP API, PostgreSQL, миграциями и чистыми слоями.
+`service-template-go` - эталонный минимальный Go microservice template для Endge-сервисов.
 
-Шаблон по умолчанию подходит для простого монолита/API:
+Шаблон содержит только инфраструктурный скелет:
 
 - HTTP на Fiber;
-- PostgreSQL через `pgx`;
-- миграции через `goose`;
 - DI через `fx`;
-- health/version endpoints;
-- OpenAPI-файл в `docs/openapi.yaml`;
-- пример фичи `Todo`;
-- auth выключен по умолчанию;
-- telemetry выключена по умолчанию;
-- Redpanda/Kafka выключены по умолчанию.
+- config через `service-kit-go`;
+- logger;
+- OpenTelemetry middleware/providers;
+- optional JWT/JWKS auth middleware;
+- optional Redpanda/Kafka client;
+- `/health` и `/version`;
+- Swagger/Scalar в non-production окружениях;
+- единый JSON-формат ошибок;
+- architecture tests для защиты базовой структуры.
+
+В шаблоне намеренно нет бизнес-usecase, repository layer и бизнес-миграций. Новый сервис должен добавлять их самостоятельно под свою предметную область.
 
 ## Как использовать
 
@@ -31,7 +34,7 @@
    cp .env.development.example .env.development
    ```
 
-5. Настройте `DATABASE_URI`, `APP_NAME`, `PUBLIC_URL`, `CORS_ALLOWED_ORIGINS`.
+5. Настройте `APP_NAME`, `PUBLIC_URL`, `CORS_ALLOWED_ORIGINS` и `POSTGRES_*`, если сервису нужна БД.
 6. Запустите тесты:
 
    ```bash
@@ -44,40 +47,35 @@
    make run
    ```
 
-## Локальная разработка с service-kit-go
+## API
 
-Для разработки рядом с локальной версией kit используйте `go.work`. Это аналог workspace в frontend-проектах.
-
-Пример структуры:
+Технические endpoints:
 
 ```text
-workspace/
-├── service-kit-go/
-└── service-template-go/
+GET /health
+GET /version
+GET /swagger
+GET /swagger/openapi3.yaml
 ```
 
-Команда:
+Бизнесовые endpoints нового сервиса должны добавляться под:
 
-```bash
-cd workspace
-go work init ./service-kit-go ./service-template-go
+```text
+/api/v1
 ```
 
-В `service-template-go/go.mod` при этом остаётся обычная published-зависимость:
+## Config
 
-```go
-require github.com/endge-lab/service-kit-go v0.1.0
+`service-kit-go` загружает `.env.*`, затем читает YAML-конфиг из `configs/<APP_ENV>.yaml`.
+
+В шаблоне есть безопасные дефолты:
+
+```text
+configs/development.yaml
+configs/production.yaml
 ```
 
-Локально Go подставит папку `./service-kit-go`, а без `go.work` скачает tagged-версию из GitHub.
-
-До публикации первого тега `github.com/endge-lab/service-kit-go@v0.1.0` команды `go mod tidy` и `go test` в template могут пытаться скачать ещё несуществующую версию. Для bootstrap-проверки можно временно добавить:
-
-```go
-replace github.com/endge-lab/service-kit-go => ../service-kit-go
-```
-
-Этот `replace` не нужно коммитить в публичный template. После публикации тега он больше не нужен.
+Env-переменные должны переопределять значения YAML.
 
 ## Auth
 
@@ -86,8 +84,6 @@ Auth опционален. По умолчанию:
 ```env
 AUTH_ENABLED=false
 ```
-
-В этом режиме `/api/todos` открыт, а `/api/session/me` не регистрируется.
 
 Чтобы включить JWT/JWKS auth:
 
@@ -106,7 +102,7 @@ Redpanda опциональна. По умолчанию:
 REDPANDA_ENABLED=false
 ```
 
-Включайте её только в event-driven сервисах:
+Включайте ее только в event-driven сервисах:
 
 ```env
 REDPANDA_ENABLED=true
@@ -123,7 +119,7 @@ TELEMETRY_ENABLED=false
 OTEL_EXPORTER_OTLP_ENDPOINT=
 ```
 
-В этом режиме сервис не подключается к OTLP collector. Если нужен OpenTelemetry export:
+Если нужен OpenTelemetry export:
 
 ```env
 TELEMETRY_ENABLED=true
@@ -131,41 +127,23 @@ OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
 OTEL_EXPORTER_OTLP_INSECURE=true
 ```
 
-## Logging
+## Добавление бизнес-логики
 
-Шаблон использует `service-kit-go/logging`, но это не обязательное правило для всех сервисов. В собственном сервисе можно:
+Рекомендуемый порядок:
 
-- оставить kit-логгер для JSON logs;
-- заменить на стандартный `log/slog`;
-- передавать noop logger там, где логи не нужны.
+1. Добавить domain entities/valueobjects/errors.
+2. Добавить usecase ports в application layer.
+3. Добавить repository implementation в infrastructure layer.
+4. Добавить HTTP transport в `internal/api/http/v1`.
+5. Зарегистрировать зависимости в `internal/bootstrap`.
+6. Добавить миграции только для реальных бизнес-таблиц сервиса.
 
-## Публикация
-
-Template и kit публикуются как обычные GitHub-репозитории. Версия kit становится доступной для `go get` после тега:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Обновление template на новую версию kit:
-
-```bash
-go get github.com/endge-lab/service-kit-go@v0.1.0
-go mod tidy
-```
+Usecase слой не должен импортировать postgres или HTTP packages.
 
 ## Проверки
 
 ```bash
 go test ./...
 docker compose --env-file .env.development config
-```
-
-Для проверки поведения без локального workspace:
-
-```bash
 GOWORK=off go test ./...
 ```
-
-Эта команда начнёт работать после публикации `github.com/endge-lab/service-kit-go` с версией, указанной в `go.mod`.

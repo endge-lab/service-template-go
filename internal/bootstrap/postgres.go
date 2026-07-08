@@ -1,8 +1,10 @@
 package bootstrap
 
 import (
+	"context"
+
+	medb "github.com/endge-lab/service-kit-go/pkg/db/postgres"
 	"github.com/endge-lab/service-template-go/internal/config"
-	"github.com/endge-lab/service-template-go/internal/platform"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
@@ -10,5 +12,10 @@ import (
 )
 
 func newPostgres(lc fx.Lifecycle, cfg *config.Config, logger *zap.Logger) (*pgxpool.Pool, error) {
-	return platform.NewPostgresPool(lc, cfg, logger)
+	return medb.NewPostgresClient(
+		context.Background(),
+		lc,
+		cfg.Postgres,
+		logger,
+	)
 }

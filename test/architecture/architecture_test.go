@@ -81,20 +81,20 @@ func TestTemplateRequiredPathsExist(t *testing.T) {
 	root := repoRoot(t)
 
 	requiredPaths := []string{
+		"configs/development.yaml",
+		"configs/production.yaml",
 		"docs/architecture.md",
-		"docs/openapi.yaml",
-		"internal/api/http",
-		"internal/bootstrap/usecase.go",
+		"docs/openapi3.yaml",
+		"internal/api/http/v1",
+		"internal/api/http/v1/docs",
+		"internal/api/http/v1/health",
+		"internal/api/http/v1/transport",
+		"internal/auth",
+		"internal/bootstrap",
 		"internal/config",
-		"internal/domain/entities",
 		"internal/domain/errors",
-		"internal/domain/valueobjects",
 		"internal/middleware",
 		"internal/platform",
-		"internal/ports",
-		"internal/repo/postgres",
-		"internal/services",
-		"internal/usecase",
 		"test/contract",
 		"test/e2e",
 		"test/integration",
@@ -107,21 +107,73 @@ func TestTemplateRequiredPathsExist(t *testing.T) {
 	}
 }
 
+func TestTemplateDoesNotContainReferenceBusinessLayers(t *testing.T) {
+	root := repoRoot(t)
+
+	forbiddenPaths := []string{
+		"internal/ports",
+		"internal/repo",
+		"internal/services",
+		"internal/usecase",
+		"migrations",
+	}
+
+	for _, relativePath := range forbiddenPaths {
+		if _, err := os.Stat(filepath.Join(root, relativePath)); err == nil {
+			t.Fatalf("template must not contain reference business path: %s", relativePath)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", relativePath, err)
+		}
+	}
+}
+
+func TestTemplateDoesNotContainReferenceFeature(t *testing.T) {
+	root := repoRoot(t)
+	forbiddenMarker := "to" + "do"
+
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "tmp", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".yml") {
+			return nil
+		}
+
+		payload, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(strings.ToLower(string(payload)), forbiddenMarker) {
+			t.Fatalf("template must not contain reference business feature text: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo: %v", err)
+	}
+}
+
 func TestTemplateLayerPackageNames(t *testing.T) {
 	root := repoRoot(t)
 
 	expectedPackages := map[string]string{
-		"internal/api/http":            "http",
-		"internal/bootstrap":           "bootstrap",
-		"internal/domain/entities":     "entities",
-		"internal/domain/errors":       "errors",
-		"internal/domain/valueobjects": "valueobjects",
-		"internal/middleware":          "middleware",
-		"internal/platform":            "platform",
-		"internal/ports":               "ports",
-		"internal/repo/postgres":       "postgres",
-		"internal/services":            "services",
-		"internal/usecase":             "usecase",
+		"internal/api/http/v1":           "http",
+		"internal/api/http/v1/docs":      "docs",
+		"internal/api/http/v1/health":    "http",
+		"internal/api/http/v1/transport": "http",
+		"internal/auth":                  "auth",
+		"internal/bootstrap":             "bootstrap",
+		"internal/config":                "config",
+		"internal/domain/errors":         "errors",
+		"internal/middleware":            "middleware",
+		"internal/platform":              "platform",
 	}
 
 	for relativeDir, expectedPackage := range expectedPackages {
@@ -131,8 +183,21 @@ func TestTemplateLayerPackageNames(t *testing.T) {
 		}
 
 		for _, filePath := range files {
-			if actualPackage := packageName(t, filePath); actualPackage != expectedPackage {
-				t.Fatalf("unexpected package name in %s: got %s want %s", filePath, actualPackage, expectedPackage)
+			effectiveExpectedPackage := expectedPackage
+			relativeFilePath, err := filepath.Rel(root, filePath)
+			if err != nil {
+				t.Fatalf("relative file path %s: %v", filePath, err)
+			}
+			matchedDir := relativeDir
+			for expectedDir, expectedDirPackage := range expectedPackages {
+				if strings.HasPrefix(relativeFilePath, expectedDir+string(filepath.Separator)) && len(expectedDir) > len(matchedDir) {
+					effectiveExpectedPackage = expectedDirPackage
+					matchedDir = expectedDir
+				}
+			}
+
+			if actualPackage := packageName(t, filePath); actualPackage != effectiveExpectedPackage {
+				t.Fatalf("unexpected package name in %s: got %s want %s", filePath, actualPackage, effectiveExpectedPackage)
 			}
 		}
 	}
@@ -156,41 +221,12 @@ func TestTemplateDependencyBoundaries(t *testing.T) {
 				"database/sql",
 				"github.com/gofiber/",
 				"github.com/jackc/pgx",
-				"go.uber.org/fx",
-			},
-		},
-		{
-			relativeDir: "internal/services",
-			forbiddenImports: []string{
-				"/internal/api/http",
-				"/internal/repo/postgres",
-				"database/sql",
-				"github.com/gofiber/",
-				"github.com/jackc/pgx",
-				"go.uber.org/fx",
-			},
-		},
-		{
-			relativeDir: "internal/usecase",
-			forbiddenImports: []string{
-				"/internal/api/http",
-				"/internal/repo/postgres",
-				"database/sql",
-				"github.com/gofiber/",
-				"github.com/jackc/pgx",
-				"go.uber.org/fx",
 			},
 		},
 		{
 			relativeDir: "internal/api/http",
 			forbiddenImports: []string{
 				"/internal/repo/postgres",
-			},
-		},
-		{
-			relativeDir: "internal/repo/postgres",
-			forbiddenImports: []string{
-				"/internal/api/http",
 			},
 		},
 	}
@@ -208,31 +244,22 @@ func TestTemplateDependencyBoundaries(t *testing.T) {
 	}
 }
 
-func TestBootstrapUseCaseModulesWireReferenceLayers(t *testing.T) {
+func TestBootstrapAppDoesNotRegisterBusinessModules(t *testing.T) {
 	root := repoRoot(t)
-	imports := parsedImports(t, filepath.Join(root, "internal/bootstrap/usecase.go"))
-
-	requiredImports := []string{
-		"/internal/api/http",
-		"/internal/auth",
-		"/internal/middleware",
-		"/internal/ports",
-		"/internal/repo/postgres",
-		"/internal/services",
-		"/internal/usecase",
+	appFile := filepath.Join(root, "internal/bootstrap/app.go")
+	payload, err := os.ReadFile(appFile)
+	if err != nil {
+		t.Fatalf("read app.go: %v", err)
 	}
 
-	for _, requiredImport := range requiredImports {
-		found := false
-		for _, importedPath := range imports {
-			if strings.Contains(importedPath, requiredImport) {
-				found = true
-				break
-			}
-		}
+	forbidden := []string{
+		"UseCaseModules",
+		"RepositoryModules",
+	}
 
-		if !found {
-			t.Fatalf("bootstrap/usecase.go must import %s", requiredImport)
+	for _, item := range forbidden {
+		if strings.Contains(string(payload), item) {
+			t.Fatalf("template app.go must not register %s", item)
 		}
 	}
 }

@@ -6,26 +6,26 @@ import (
 )
 
 func TestCodeOfReturnsSpecificWrappedCode(t *testing.T) {
-	err := InvalidInput("todo.invalid_title", "Некорректный заголовок задачи")
+	err := InvalidInput("validation.invalid_input", "Некорректные входные данные")
 
-	if got := CodeOf(err); got != "todo.invalid_title" {
-		t.Fatalf("CodeOf() = %q, want %q", got, "todo.invalid_title")
+	if got := CodeOf(err); got != "validation.invalid_input" {
+		t.Fatalf("CodeOf() = %q, want %q", got, "validation.invalid_input")
 	}
 	if got := HTTPStatusOf(err); got != 400 {
 		t.Fatalf("HTTPStatusOf() = %d, want 400", got)
 	}
 	if !errors.Is(err, ErrInvalidInput) {
-		t.Fatal("expected wrapped error to match ErrInvalidInput")
+		t.Fatal("expected wrapped transport to match ErrInvalidInput")
 	}
 }
 
 func TestWithDetailsPreservesAppError(t *testing.T) {
-	err := WithDetails(ErrAuthUserIDRequired, map[string]any{"field": "authUserId"})
+	err := WithDetails(ErrInvalidInput, map[string]any{"field": "identity"})
 
-	if got := CodeOf(err); got != "session.auth_user_id_required" {
-		t.Fatalf("CodeOf() = %q, want %q", got, "session.auth_user_id_required")
+	if got := CodeOf(err); got != "common.invalid_input" {
+		t.Fatalf("CodeOf() = %q, want %q", got, "common.invalid_input")
 	}
-	if got := DetailsOf(err)["field"]; got != "authUserId" {
-		t.Fatalf("DetailsOf()[field] = %v, want authUserId", got)
+	if got := DetailsOf(err)["field"]; got != "identity" {
+		t.Fatalf("DetailsOf()[field] = %v, want identity", got)
 	}
 }

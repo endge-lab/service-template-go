@@ -1,8 +1,8 @@
 # Integration Tests
 
-Здесь хранятся integration-тесты, которые поднимают реальные зависимости:
+Здесь хранятся integration-тесты конкретного сервиса, которые поднимают реальные зависимости:
 
-- PostgreSQL adapters
-- migrations
+- PostgreSQL adapters, если сервис использует БД
+- migrations, если сервис содержит бизнес-таблицы
 - transaction boundaries
-- взаимодействие repo <-> database
+- взаимодействие infrastructure adapters <-> external systems

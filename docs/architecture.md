@@ -1,50 +1,60 @@
 # Endge Service Template Architecture
 
-Этот файл описывает production-стандарт нового Endge-сервиса поверх шаблона.
+Этот файл описывает минимальный production-ready скелет нового Endge microservice.
 
-## 1. Роль сервиса
+## 1. Роль шаблона
 
-Каждый сервис из шаблона предполагается как отдельный business-service:
+Template не содержит бизнес-фич. Его задача - дать сервису готовую инфраструктурную основу:
 
-- со своей PostgreSQL-базой
-- со своим HTTP API
-- со своим доменом
-- с общей auth-моделью через `auth-service`
-- с общей telemetry-моделью через `otel-collector`
+- runtime config;
+- HTTP server;
+- middleware;
+- health/version endpoints;
+- docs endpoint;
+- auth middleware;
+- telemetry;
+- logger;
+- optional platform clients.
 
-## 2. Слои
+Бизнесовые usecase, repositories и migrations добавляются только в конкретном сервисе.
+
+## 2. Базовая структура
 
 ```mermaid
 flowchart LR
-    Client["Client"] --> HTTP["api/http"]
-    HTTP --> UseCase["usecase"]
-    UseCase --> Services["services"]
-    UseCase --> Ports["ports"]
-    Ports --> Repo["repo/postgres"]
-    Repo --> DB["PostgreSQL"]
-    UseCase --> Domain["domain"]
+    Client["Client"] --> HTTP["api/http/v1"]
+    HTTP --> Middleware["middleware"]
+    HTTP --> Health["health/docs"]
+    Bootstrap["bootstrap"] --> HTTP
+    Bootstrap --> Config["config"]
+    Bootstrap --> Platform["platform"]
 ```
 
-Правила:
+Обязательные правила:
 
-- `domain` не знает про HTTP, Postgres и middleware
-- `usecase` владеет orchestration и transaction boundary
-- `ports` описывает, что application layer хочет от внешнего мира
-- `repo/postgres` реализует эти контракты
+- `internal/api/http/v1` содержит transport слой и маршруты;
+- `internal/bootstrap` собирает приложение через `fx`;
+- `internal/config` является тонкой оберткой над `service-kit-go/config`;
+- `internal/platform` содержит интеграции уровня runtime, например Redpanda client;
+- `internal/domain/errors` содержит общий error contract;
+- бизнесовые слои не создаются в template заранее.
 
-## 3. Домен
+## 3. HTTP
 
-`internal/domain` делится на три части:
+Template регистрирует:
 
-- `entities` для сущностей
-- `valueobjects` для значимых значений с инвариантами
-- `errors` для бизнесовых и application-level ошибок
+```text
+GET /health
+GET /version
+GET /swagger
+GET /swagger/openapi3.yaml
+```
 
-Пример из шаблона:
+Новые бизнесовые endpoints должны добавляться под:
 
-- `Todo`
-- `TodoTitle`
-- `ErrInvalidTodoTitle`
+```text
+/api/v1
+```
 
 ## 4. Auth flow
 
@@ -55,48 +65,37 @@ flowchart LR
     AuthMW --> JWKS["JWKS cache"]
     AuthMW -. refresh .-> Auth["auth-service"]
     AuthMW --> Identity["Request identity in context"]
-    Identity --> Handler["HTTP handler"]
-    Handler --> UseCase["usecase"]
 ```
 
 Правила:
 
-- JWT валидируется локально
-- на каждый запрос не делаем remote introspection
-- handler работает уже с готовой identity из context
+- auth выключен по умолчанию;
+- JWT валидируется локально через JWKS;
+- на каждый запрос не делается remote introspection;
+- конкретный сервис сам решает, какие `/api/v1` routes защищать auth middleware.
 
-## 5. Transaction flow
+## 5. Ошибки
 
-```mermaid
-flowchart LR
-    Handler["HTTP handler"] --> UseCase["usecase"]
-    UseCase --> TxPort["ports.TxManager"]
-    TxPort --> TxAdapter["repo/postgres/transaction_manager.go"]
-    TxAdapter --> DB["PostgreSQL transaction"]
-    UseCase --> Repo["repository port"]
+Все HTTP-ошибки должны возвращаться в едином формате:
+
+```json
+{
+  "code": "common.not_found",
+  "message": "Сущность не найдена",
+  "details": {}
+}
 ```
-
-Правила:
-
-- транзакцией владеет `usecase`
-- репозиторий не открывает бизнес-транзакцию самовольно
-- конкретная реализация транзакции остается инфраструктурной деталью
-
-## 6. Ошибки
-
-Распределение ошибок:
-
-- transport parsing/validation errors живут на HTTP boundary
-- доменные и application-level ошибки живут в `internal/domain/errors`
-- неожиданные infrastructure errors логируются и маппятся в безопасный `500`
 
 Стабильный внешний маппинг:
 
-- `ErrInvalidInput` -> `400`
-- `ErrNotFound` -> `404`
-- `ErrConflict` -> `409`
+- `ErrInvalidInput` -> `400`;
+- `ErrUnauthorized` -> `401`;
+- `ErrForbidden` -> `403`;
+- `ErrNotFound` -> `404`;
+- `ErrConflict` -> `409`;
+- `ErrInternal` -> `500`.
 
-## 7. Telemetry и logging
+## 6. Telemetry и logging
 
 ```mermaid
 flowchart LR
@@ -106,71 +105,66 @@ flowchart LR
 
 Правила:
 
-- traces и metrics идут в `OTEL_EXPORTER_OTLP_ENDPOINT`
-- логи остаются в `stdout`
-- входящий `traceparent` или `baggage` должен продолжать существующий trace; если upstream-контекста нет, сервис начинает новый trace сам
-- недоступность collector не должна ломать обработку запросов
-- сервис не должен делать удаленный вызов на каждый лог
-- reference-поток шаблона должен показывать child spans и trace-aware логи в `api/http`, `auth`, `usecase`, `services` и `repo/postgres`
+- traces и metrics идут в `OTEL_EXPORTER_OTLP_ENDPOINT`;
+- логи остаются в `stdout`;
+- входящий `traceparent` или `baggage` должен продолжать существующий trace;
+- недоступность collector не должна ломать обработку запросов.
 
-## 8. RedPanda и event bus
+## 7. Redpanda и event bus
 
 ```mermaid
 flowchart LR
     Config["config + env"] --> Runtime["platform.RedpandaClient"]
     Runtime --> Consumer["background consumer"]
     Runtime --> Producer["application publisher"]
-    Consumer --> UseCase["usecase"]
 ```
 
 Правила:
 
-- Kafka-compatible runtime живет в `internal/platform`, а не внутри handler/use case;
-- список брокеров, client id и таймауты задаются через `REDPANDA_*`;
-- конкретные topic names задаёт сервисный конфиг, а не template;
-- сервисные ingestion-потоки должны быть идемпотентны и готовы к повторной доставке сообщений.
+- Redpanda выключена по умолчанию;
+- Kafka-compatible runtime живет в `internal/platform`;
+- topic names задает конкретный сервис, не template.
 
-## 9. Scalar и контракт
+## 8. Бизнес-слои
 
-Контракт должен жить в двух местах одновременно:
+Когда сервису нужна предметная логика, добавляйте ее явно:
 
-- `docs/openapi.yaml`
-- OpenAPI-комментарии в `api/http`
+```mermaid
+flowchart LR
+    HTTP["api/http/v1"] --> UseCase["usecase"]
+    UseCase --> Ports["usecase/ports"]
+    Repo["repo/postgres"] --> Ports
+    Repo --> DB["PostgreSQL"]
+    UseCase --> Domain["domain"]
+```
 
-Это позволяет:
+Правила:
 
-- быстро читать checked-in контракт
-- держать endpoint description рядом с кодом
-- не терять документацию при расширении сервиса
+- usecase слой владеет orchestration и transaction boundary;
+- ports описывают потребности usecase слоя;
+- repo/postgres реализует ports;
+- HTTP не должен ходить напрямую в repo/postgres;
+- domain не должен знать про HTTP, middleware и Postgres.
+
+## 9. OpenAPI
+
+Контракт шаблона живет в:
+
+```text
+docs/openapi3.yaml
+```
+
+Этот файл должен оставаться минимальным, пока в сервисе нет бизнес API.
 
 ## 10. Тестовая стратегия
 
-Шаблон ожидает четыре уровня проверки:
+Template проверяет:
 
-- unit tests рядом с `domain`, `services`, `usecase`
-- architecture tests для package naming, layer boundaries и required skeleton
-- `test/integration` для реальной БД и repo adapters
-- `test/contract` для HTTP-контракта
-- `test/e2e` для полного user flow
+- компиляцию;
+- общие domain errors;
+- platform clients в disabled/enabled режимах;
+- package naming;
+- отсутствие старых reference-фич;
+- наличие технического OpenAPI.
 
-Отдельно для event-driven сервисов шаблон ожидает:
-
-- unit tests на нормализацию входящих Kafka command payload-ов;
-- integration tests на persistence/fanout слой;
-- contract tests на HTTP receipts и polling;
-- e2e-сценарии с ingest -> fanout -> client ack/dismiss.
-
-## 11. Todo как reference-feature
-
-`Todo` в шаблоне специально сделан как минимальный, но production-pattern пример:
-
-- одна сущность
-- один value object
-- один набор доменных ошибок
-- один сервис
-- один порт репозитория
-- один `TxManager`
-- один use case
-- один transport endpoint
-
-Если новая фича не укладывается в этот pipeline, сначала нужно понять, это правда особый случай или мы начинаем размывать архитектурный стандарт.
+Конкретный сервис должен добавить свои unit, integration, contract и e2e tests вместе с бизнес-логикой.
